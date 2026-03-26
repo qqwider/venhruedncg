@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "sundlc",
+  "version": "${version}",
+  "name": "SunDLC",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/sundlc/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "me.qwider.sundlc.SunDLC"
+    ]
+  },
+  "mixins": [
+    "sundlc.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}

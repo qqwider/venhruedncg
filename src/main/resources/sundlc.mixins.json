@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "me.qwider.sundlc.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "InGameHudMixin",
+    "MixinChat",
+    "MixinLivingEntity"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
