@@ -33,29 +33,57 @@ public class Panel {
         int alpha = (int)(255 * anim);
         if (alpha < 1) return;
 
-        int colorPanelBg = (alpha << 24) | 0x1C1C1D;
-        int colorTitleBg = (alpha << 24) | 0x1D1B1F;
-        int colorModule = (alpha << 24) | 0x222126;
-        int colorModuleEnabled = (alpha << 24) | 0x35333A;
-        int textColor = (alpha << 24) | 0xFFFFFF;
+        // Цветовая палитра
+        int panelBg = (alpha << 24) | 0x141415;      // Глубокий черный
+        int headBg = (alpha << 24) | 0x1D1B1F;       // Цвет заголовка
+        int accent = (alpha << 24) | 0x8877FF;       // Основной фиолетовый
+        int moduleBg = (alpha << 24) | 0x1A1A1B;     // Цвет выключенного модуля
 
-        float totalHeight = h + 4;
+        float totalHeight = h;
         if (open && !modules.isEmpty()) {
-            totalHeight += (modules.size() * 16) + 2;
+            totalHeight += (modules.size() * 16) + 4;
         }
 
-        RenderUtils.drawRoundedRect(context, x - 2, y - 2, w + 4, totalHeight, 7, colorPanelBg);
-        RenderUtils.drawRoundedRect(context, x, y, w, h, 5, colorTitleBg);
+        // 1. Внешняя тень и основная подложка
+        RenderUtils.drawRoundedRect(context, x - 1, y - 1, w + 2, totalHeight + 2, 8, (alpha/4 << 24) | 0x000000);
+        RenderUtils.drawRoundedRect(context, x, y, w, totalHeight, 7, panelBg);
 
-        float tw = MSDFRenderer.getStringWidth(category.name, 11);
-        MSDFRenderer.drawString(matrix, category.name, x + (w - tw)/2f, y + 11.5f, 11, textColor);
+        // 2. Заголовок (Header)
+        RenderUtils.drawRoundedRect(context, x, y, w, h, 6, headBg);
+        // Тонкая линия разделения снизу заголовка
+        RenderUtils.drawRoundedRect(context, x + 4, y + h - 1.5f, w - 8, 1, 0, (alpha/3 << 24) | 0xFFFFFF);
+
+        // Текст заголовка (делаем чуть жирнее визуально через размер)
+        float tw = MSDFRenderer.getStringWidth(category.name, 10);
+        MSDFRenderer.drawString(matrix, category.name, x + (w - tw)/2f, y + 11f, 10, (alpha << 24) | 0xFFFFFF);
 
         if (open) {
             float currentY = y + h + 3;
             for (Module m : modules) {
-                int modColor = m.isEnabled() ? colorModuleEnabled : colorModule;
-                RenderUtils.drawRoundedRect(context, x, currentY, w, 14, 3, modColor);
-                MSDFRenderer.drawString(matrix, m.getName(), x + 6, currentY + 10.2f, 9, textColor);
+                boolean hovered = isHovered(mouseX, mouseY, x + 3, currentY, w - 6, 14);
+
+                // Анимация состояния модуля
+                int targetModBg = m.isEnabled() ? 0x24222A : 0x1A1A1B;
+                if (hovered) targetModBg = 0x2D2B33;
+
+                // Рисуем кнопку модуля
+                RenderUtils.drawRoundedRect(context, x + 3, currentY, w - 6, 14, 4, (alpha << 24) | targetModBg);
+
+                // Если включен - рисуем акцентную полоску слева
+                if (m.isEnabled()) {
+                    RenderUtils.drawRoundedRect(context, x + 4, currentY + 3, 1.5f, 8, 1, accent);
+
+                    // Эффект "точки" справа для включенного
+                    RenderUtils.drawRoundedRect(context, x + w - 10, currentY + 5.5f, 3, 3, 1.5f, accent);
+                }
+
+                // Текст модуля (сдвигается, если есть полоска)
+                float textX = x + (m.isEnabled() ? 9 : 7);
+                int textColor = m.isEnabled() ? 0xFFFFFF : 0xBBBBBB;
+                if (hovered) textColor = 0xFFFFFF;
+
+                MSDFRenderer.drawString(matrix, m.getName(), textX, currentY + 10f, 8, (alpha << 24) | textColor);
+
                 currentY += 16;
             }
         }
@@ -70,7 +98,11 @@ public class Panel {
         if (open && button == 0) {
             float currentY = y + 16 + 3;
             for (Module m : ModuleManager.getByCategory(category)) {
-                if (isHovered(mouseX, mouseY, x, currentY, w, 14)) m.toggle();
+                if (isHovered(mouseX, mouseY, x, currentY, w, 14)) {
+                    m.toggle();
+                    // СОХРАНЯЕМ ПОСЛЕ КЛИКА
+                    me.qwider.sundlc.config.ConfigManager.save();
+                }
                 currentY += 16;
             }
         }

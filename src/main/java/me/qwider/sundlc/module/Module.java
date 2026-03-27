@@ -1,6 +1,7 @@
 package me.qwider.sundlc.module;
 
 import me.qwider.sundlc.render.Animation;
+import me.qwider.sundlc.render.DynamicIsland;
 import net.minecraft.client.MinecraftClient;
 
 public abstract class Module {
@@ -24,9 +25,15 @@ public abstract class Module {
     }
 
     public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-        if (enabled) onEnable(); else onDisable();
-        me.qwider.sundlc.config.ConfigManager.save(); // Сохраняем состояние сразу
+        if (this.enabled != enabled) {
+            this.enabled = enabled;
+            if (enabled) onEnable(); else onDisable();
+
+            // Вызываем обновленный остров
+            if (!this.getName().equalsIgnoreCase("ClickGUI")) {
+                me.qwider.sundlc.render.DynamicIsland.show(this, enabled);
+            }
+        }
     }
 
     public void onEnable() {}

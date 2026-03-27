@@ -1,6 +1,7 @@
 package me.qwider.sundlc.module;
 
-import me.qwider.sundlc.module.modules.visuals.ArrayListModule;
+import me.qwider.sundlc.module.modules.visuals.NameTags;
+import me.qwider.sundlc.module.modules.visuals.Potions;
 import me.qwider.sundlc.module.modules.visuals.TargetHUD;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,10 +11,9 @@ public class ModuleManager {
 
     public static void init() {
         add(new TargetHUD());
-        add(new ArrayListModule());
+        add(new NameTags());
+        add(new Potions());
 
-        add(new Module("ClickGUI", Category.GLOBALS) {});
-        add(new Module("ESP", Category.VISUALS) {});
     }
 
     private static void add(Module m) { modules.add(m); }

@@ -50,7 +50,10 @@ public class ConfigManager {
     }
 
     public static void load() {
-        if (!FILE.exists()) return;
+        if (!FILE.exists()) {
+            save(); // Если файла нет, создаем его с дефолтными настройками
+            return;
+        }
         try {
             JsonObject json = GSON.fromJson(Files.readString(FILE.toPath()), JsonObject.class);
 
@@ -58,7 +61,10 @@ public class ConfigManager {
                 JsonObject mods = json.getAsJsonObject("modules");
                 for (Module m : ModuleManager.getModules()) {
                     if (mods.has(m.getName())) {
-                        m.setEnabled(mods.getAsJsonObject(m.getName()).get("enabled").getAsBoolean());
+                        boolean state = mods.getAsJsonObject(m.getName()).get("enabled").getAsBoolean();
+                        // Устанавливаем состояние.
+                        // Так как мы убрали save() из setEnabled, зацикливания больше не будет.
+                        m.setEnabled(state);
                     }
                 }
             }

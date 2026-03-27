@@ -3,61 +3,157 @@ package me.qwider.sundlc.render;
 import com.mojang.blaze3d.systems.RenderSystem;
 import me.qwider.sundlc.module.Module;
 import me.qwider.sundlc.module.ModuleManager;
-import me.qwider.sundlc.module.modules.visuals.ArrayListModule;
 import me.qwider.sundlc.module.modules.visuals.TargetHUD;
+import me.qwider.sundlc.module.modules.visuals.Potions;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.hit.EntityHitResult;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
 public class SunHUD {
     private static final MinecraftClient mc = MinecraftClient.getInstance();
-    private static LivingEntity lastTarget = null;
-    private static float smoothHealth = 0;
 
+    // Для плавного ХП
+    private static float targetHudHealth = 0;
     public static void render(DrawContext context) {
         if (mc.player == null) return;
 
-        renderArrayList(context);
         renderTargetHUD(context);
+        DynamicIsland.render(context);
+        renderPotions(context);
     }
 
-    private static void renderArrayList(DrawContext context) {
-        Module arrayModule = ModuleManager.getModules().stream().filter(m -> m instanceof ArrayListModule).findFirst().orElse(null);
-        if (arrayModule == null || !arrayModule.isEnabled()) return;
+    // Система анимаций зелий
+    private static final java.util.Map<net.minecraft.entity.effect.StatusEffect, Animation> potionAnims = new java.util.HashMap<>();
 
-        List<Module> active = ModuleManager.getModules().stream()
-                .filter(m -> !(m instanceof ArrayListModule))
-                .sorted(Comparator.comparingDouble(m -> -MSDFRenderer.getStringWidth(m.getName(), 9f)))
-                .toList();
+    private static void renderPotions(DrawContext context) {
+        Module m = ModuleManager.getModules().stream().filter(mod -> mod.getName().equals("Potions")).findFirst().orElse(null);
+        if (m == null || !m.isEnabled() || mc.player == null) return;
 
-        float x = 5, y = 5;
-        for (Module m : active) {
-            m.animation.update(m.isEnabled());
-            float anim = (float) m.animation.getValue();
-            if (anim < 0.005f) continue;
+        // 1. ПОЛУЧАЕМ СПИСОК ЭФФЕКТОВ
+        // Берем коллекцию активных эффектов
+        var activeInstances = mc.player.getStatusEffects();
 
-            float tw = MSDFRenderer.getStringWidth(m.getName(), 9f);
-            float w = tw + 14;
+        // Добавляем эффекты от маяков
+        var beaconEffects = getBeaconEffects();
+        activeInstances = new java.util.ArrayList<>(activeInstances);
+        activeInstances.addAll(beaconEffects);
 
-            context.getMatrices().push();
-            context.getMatrices().translate(x - (w * (1-anim)), y, 0);
-            context.getMatrices().scale(anim, anim, 1);
+        // Обновляем анимации - все активные эффекты всегда видны
+        for (var instance : activeInstances) {
+            var effect = instance.getEffectType().value();
+            potionAnims.computeIfAbsent(effect, k -> new Animation(1.0)).update(true);
+        }
+        
+        // Удаляем эффекты которых больше нет
+        java.util.Collection<StatusEffectInstance> finalActiveInstances = activeInstances;
+        potionAnims.keySet().removeIf(effect ->
+            finalActiveInstances.stream().noneMatch(i -> i.getEffectType().value() == effect)
+        );
+        
+        if (potionAnims.isEmpty()) return;
 
-            drawStyledRect(context, 0, 0, w, 14, anim);
-            MSDFRenderer.drawString(context.getMatrices().peek().getPositionMatrix(), m.getName(), 6, 10.5f, 9, getAlphaColor(0xFFFFFF, anim));
+        // 2. ГЕОМЕТРИЯ
+        float w = 100;
+        float headerH = 14;
+        float rowH = 15;
 
-            context.getMatrices().pop();
-            y += 16 * anim;
+        float totalRowsHeight = rowH * potionAnims.size();
+        float totalH = headerH + totalRowsHeight + 4;
+        
+        // Обновляем размер для Draggable
+        Potions.pos.width = w;
+        Potions.pos.height = totalH;
+        
+        float x = Potions.pos.x;
+        float y = Potions.pos.y;
+
+        // 3. КОРПУС
+        RenderUtils.drawRoundedRect(context, x, y, w, totalH, 6, 0xFF1D1B1F);
+
+        String title = "Potions";
+        float titleW = MSDFRenderer.getStringWidth(title, 8f);
+        MSDFRenderer.drawString(context.getMatrices().peek().getPositionMatrix(), title, x + (w - titleW) / 2f, y + 10f, 8f, 0xFFFFFFFF);
+
+        // 4. РЕНДЕР СТРОК
+        float currentY = y + headerH + 2;
+
+        // Сортируем список по названию (для стабильности)
+        List<net.minecraft.entity.effect.StatusEffect> sortedList = new ArrayList<>(potionAnims.keySet());
+        sortedList.sort(Comparator.comparing(e -> net.minecraft.client.resource.language.I18n.translate(e.getTranslationKey())));
+
+        for (var effect : sortedList) {
+            float a = 1.0f;
+
+            // Находим ДАННЫЕ эффекта у игрока (уровень, время)
+            // В 1.21.1 поиск идет через RegistryEntry, поэтому стримим список
+            var instance = mc.player.getStatusEffects().stream()
+                    .filter(i -> i.getEffectType().value() == effect)
+                    .findFirst().orElse(null);
+
+            int alpha = 255;
+            RenderUtils.drawRoundedRect(context, x + 3, currentY, w - 6, rowH - 2, 4, (alpha << 24) | 0x222126);
+
+            // --- СЛОТ-СИСТЕМА ---
+            float iconSize = 9;
+            float timerBlockW = 26;
+            float leftPadding = 16;
+
+            if (instance != null) {
+                // ИКОНКА (Берем RegistryEntry прямо из инстанса — это фиксит розовые квадраты)
+                var sprite = mc.getStatusEffectSpriteManager().getSprite(instance.getEffectType());
+                RenderSystem.setShaderColor(1, 1, 1, a);
+                context.drawSprite((int)x + 5, (int)currentY + 2, 0, (int)iconSize, (int)iconSize, sprite);
+                RenderSystem.setShaderColor(1, 1, 1, 1);
+
+                // ТЕКСТ (Название + Уровень)
+                String name = net.minecraft.client.resource.language.I18n.translate(effect.getTranslationKey());
+                int level = instance.getAmplifier() + 1;
+                String displayName = (level > 1) ? name + " " + level : name;
+
+                // ТАЙМЕР
+                int ticks = instance.getDuration();
+                String timeStr = (ticks > 32767 || ticks == -1) ? "inf" : String.format("%02d:%02d", (ticks/1200), (ticks/20)%60);
+
+                // 1. Рисуем Таймер (Справа)
+                float timeW = MSDFRenderer.getStringWidth(timeStr, 6.5f);
+                float timeX = x + w - timerBlockW + (timerBlockW - timeW) / 2f - 2;
+                MSDFRenderer.drawString(context.getMatrices().peek().getPositionMatrix(), timeStr, timeX, currentY + 9f, 6.5f, (alpha << 24) | 0x888888);
+
+                // 2. Рисуем Название (Бегущая строка)
+                float textX = x + leftPadding;
+                float maxTextW = w - leftPadding - timerBlockW - 2;
+                float fullTextW = MSDFRenderer.getStringWidth(displayName, 7f);
+
+                // Включаем Scissor (обрезку)
+                context.enableScissor((int)textX, (int)currentY, (int)(textX + maxTextW), (int)(currentY + rowH));
+
+                float offsetX = 0;
+                if (fullTextW > maxTextW) {
+                    float diff = fullTextW - maxTextW;
+                    double time = System.currentTimeMillis() / 2000.0;
+                    double cycle = time % 4.0;
+                    if (cycle < 2.0) {
+                        offsetX = -diff * (float) (cycle / 2.0);
+                    } else {
+                        offsetX = -diff * (float) ((4.0 - cycle) / 2.0);
+                    }
+                }
+
+                MSDFRenderer.drawString(context.getMatrices().peek().getPositionMatrix(), displayName, textX + offsetX, currentY + 9f, 7f, (alpha << 24) | 0xFFFFFFFF);
+
+                context.disableScissor();
+            }
+
+            currentY += rowH;
         }
     }
 
@@ -65,133 +161,115 @@ public class SunHUD {
         Module m = ModuleManager.getModules().stream().filter(mod -> mod instanceof TargetHUD).findFirst().orElse(null);
         if (m == null || !m.isEnabled()) return;
 
-        // 1. ЗАХВАТ ЦЕЛИ ПРИ НАВОДКЕ
+        // 1. ЗАХВАТ ЦЕЛИ
         if (mc.crosshairTarget instanceof net.minecraft.util.hit.EntityHitResult ehr) {
             if (ehr.getEntity() instanceof LivingEntity le && le.isAlive() && le != mc.player) {
-                TargetHUD.target = le; // Запоминаем в модуле
+                TargetHUD.target = le;
             }
         }
 
-        // 2. ПРОВЕРКА ВАЛИДНОСТИ ТЕКУЩЕЙ ЦЕЛИ
+        // 2. ПРОВЕРКА ВАЛИДНОСТИ (Linger Logic)
+        boolean hasValidTarget = false;
         if (TargetHUD.target != null) {
-            // Сбрасываем цель если моб мертв или слишком далеко (более 20 блоков)
-            if (!TargetHUD.target.isAlive() || 
-                mc.player.squaredDistanceTo(TargetHUD.target) > 400) {
-                TargetHUD.target = null;
-                TargetHUD.smoothHealth = 0;
+            if (TargetHUD.target.isAlive() && mc.player.squaredDistanceTo(TargetHUD.target) < 400) {
+                hasValidTarget = true;
             }
         }
 
-        // 3. УСЛОВИЕ ОТОБРАЖЕНИЯ
         boolean isChat = mc.currentScreen instanceof ChatScreen;
-        boolean hasValidTarget = TargetHUD.target != null;
+        // Решаем, нужно ли показывать худ
         boolean shouldShow = hasValidTarget || isChat;
 
-        // 4. АНИМАЦИЯ (FPS-BASED)
         m.animation.update(shouldShow);
         float anim = (float) m.animation.getValue();
 
-        // 5. КОНЕЦ АНИМАЦИИ: Если худ закрылся - забываем цель окончательно
         if (anim <= 0.005f) {
+            if (!shouldShow) TargetHUD.target = null; // Очищаем цель только когда анимация кончилась
             return;
         }
 
-        // 6. КТО ОТОБРАЖАЕТСЯ
-        // Рисуем либо цель из модуля, либо игрока (если в чате и нет цели)
+        // КТО ОТОБРАЖАЕТСЯ (Исправлено: если цель была, рисуем её до конца анимации)
         LivingEntity entity = (TargetHUD.target != null) ? TargetHUD.target : (isChat ? mc.player : null);
         if (entity == null) return;
 
-        // 7. ПАРАМЕТРЫ И ПЛАВНОЕ ХП
         float w = 132, h = 42, x = TargetHUD.pos.x, y = TargetHUD.pos.y;
         TargetHUD.pos.width = w; TargetHUD.pos.height = h;
 
+        // Плавное ХП
         float realHp = entity.getHealth();
-        if (TargetHUD.smoothHealth <= 0.1f) TargetHUD.smoothHealth = realHp;
-        TargetHUD.smoothHealth += (realHp - TargetHUD.smoothHealth) * 0.15f;
+        if (targetHudHealth <= 0.1f || Math.abs(targetHudHealth - realHp) > 10) targetHudHealth = realHp;
+        targetHudHealth += (realHp - targetHudHealth) * 0.12f;
 
-        // --- РЕНДЕР ---
         context.getMatrices().push();
         context.getMatrices().translate(x + w / 2f, y + h / 2f, 0);
         context.getMatrices().scale(anim, anim, 1);
         context.getMatrices().translate(-(x + w / 2f), -(y + h / 2f), 0);
 
-        Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
         int alpha = (int)(255 * anim);
         int colorBase = (alpha << 24) | 0x1D1B1F;
         int colorInner = (alpha << 24) | 0x222126;
-        int textColor = (alpha << 24) | 0xFFFFFF;
+        Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
 
-        // Рисуем корпус
+        // Корпус
         RenderUtils.drawRoundedRect(context, x, y, w, h, 6, colorBase);
 
-        // Рисуем Голову (Используя наш исправленный drawRoundedSkin)
+        // Голова
         RenderUtils.drawRoundedRect(context, x + 4, y + 4, 34, 34, 5, colorInner);
-        if (entity instanceof net.minecraft.client.network.AbstractClientPlayerEntity player) {
-            // Эффект покраснения головы при уроне
-            if (entity.equals(TargetHUD.target) && TargetHUD.damageAnim > 0.01f) {
-                RenderSystem.setShaderColor(1.0f, 1.0f - TargetHUD.damageAnim, 1.0f - TargetHUD.damageAnim, anim);
-            } else {
-                RenderSystem.setShaderColor(1, 1, 1, anim);
-            }
+        if (entity instanceof AbstractClientPlayerEntity player) {
+            float damageRed = TargetHUD.damageAnim;
+            RenderSystem.setShaderColor(1, 1.0f - damageRed, 1.0f - damageRed, anim);
             RenderUtils.drawRoundedSkin(context, player.getSkinTextures().texture(), x + 7, y + 7, 28, 28, 4, anim);
             RenderSystem.setShaderColor(1, 1, 1, 1);
         } else {
-            // Буква моба центрированная
             String initial = entity.getName().getString().substring(0, 1).toUpperCase();
-            float iw = MSDFRenderer.getStringWidth(initial, 15);
-            MSDFRenderer.drawString(matrix, initial, x + 4 + (34 - iw)/2f, y + 26.5f, 15, textColor);
+            MSDFRenderer.drawString(matrix, initial, x + 16, y + 26.5f, 15, (alpha << 24) | 0xFFFFFF);
         }
 
-        // Правая инфо-зона (Подложка)
+        // Инфо-зона
         float infoX = x + 42, infoW = w - 46;
         RenderUtils.drawRoundedRect(context, infoX, y + 4, infoW, h - 8, 4, colorInner);
 
-        // Текст Имени
+        // Имя
         String name = entity.getName().getString();
-        MSDFRenderer.drawString(matrix, name.length() > 14 ? name.substring(0, 12) + ".." : name, infoX + 5, y + 12.5f, 8, textColor);
+        MSDFRenderer.drawString(matrix, name.length() > 14 ? name.substring(0, 12) + ".." : name, infoX + 5, y + 12.5f, 8, (alpha << 24) | 0xFFFFFF);
 
         // Броня
-        java.util.List<net.minecraft.item.ItemStack> armor = new java.util.ArrayList<>();
+        List<ItemStack> armor = new ArrayList<>();
         entity.getArmorItems().forEach(armor::add);
         java.util.Collections.reverse(armor);
         for (int i = 0; i < 4; i++) {
-            net.minecraft.item.ItemStack stack = (i < armor.size()) ? armor.get(i) : net.minecraft.item.ItemStack.EMPTY;
+            ItemStack stack = (i < armor.size()) ? armor.get(i) : ItemStack.EMPTY;
             float slotX = infoX + 4 + (i * 13);
             RenderUtils.drawRoundedRect(context, slotX, y + 19, 11, 11, 3, colorBase);
             if (!stack.isEmpty()) {
                 context.getMatrices().push();
-                float s = 0.6f;
                 context.getMatrices().translate(slotX + 0.5f, y + 19.5f, 150);
-                context.getMatrices().scale(s, s, 1f);
+                context.getMatrices().scale(0.6f, 0.6f, 1f);
                 context.drawItem(stack, 0, 0);
                 context.getMatrices().pop();
             }
         }
 
-        // Текст HP
+        // HP Текст и бар
         String hpStr = String.format("%.1f", entity.getHealth());
         float hpW = MSDFRenderer.getStringWidth(hpStr, 8);
-        MSDFRenderer.drawString(matrix, hpStr, infoX + infoW - hpW - 12, y + 27, 8, textColor);
-        MSDFRenderer.drawString(matrix, "hp", infoX + infoW - 11, y + 27, 6.5f, (alpha << 24) | 0x888888);
+        MSDFRenderer.drawString(matrix, hpStr, infoX + infoW - hpW - 12, y + 27, 8, (alpha << 24) | 0xFFFFFF);
 
-        // Полоска HP
-        float barW = infoW - 8;
-        float hpP = Math.max(0.01f, Math.min(1f, TargetHUD.smoothHealth / entity.getMaxHealth()));
-        RenderUtils.drawRoundedRect(context, infoX + 4, y + h - 8.5f, barW, 2.5f, 1f, (alpha/4 << 24) | 0x000000);
-        RenderUtils.drawRoundedRect(context, infoX + 4, y + h - 8.5f, barW * hpP, 2.5f, 1f, (alpha << 24) | 0x8877FF);
+        float hpP = Math.max(0.01f, Math.min(1f, targetHudHealth / entity.getMaxHealth()));
+        RenderUtils.drawRoundedRect(context, infoX + 4, y + h - 8.5f, barW(infoW), 2.5f, 1f, (alpha/4 << 24) | 0x000000);
+        RenderUtils.drawRoundedRect(context, infoX + 4, y + h - 8.5f, barW(infoW) * hpP, 2.5f, 1f, (alpha << 24) | 0x8877FF);
 
         context.getMatrices().pop();
     }
 
-    // Хелпер для двухслойных прямоугольников SunDLC
-    private static void drawStyledRect(DrawContext context, float x, float y, float w, float h, float anim) {
-        RenderUtils.drawRoundedRect(context, x, y, w, h, 4, getAlphaColor(0x1D1B1F, anim));
-        RenderUtils.drawRoundedRect(context, x + 1.5f, y + 1.5f, w - 3f, h - 3f, 3, getAlphaColor(0x222126, anim));
-    }
+    private static float barW(float infoW) { return infoW - 8; }
 
-    // Хелпер для альфа-канала
-    private static int getAlphaColor(int rgb, float anim) {
-        int alpha = (int)(255 * anim);
-        return (alpha << 24) | (rgb & 0x00FFFFFF);
+    private static java.util.List<StatusEffectInstance> getBeaconEffects() {
+        var effects = new java.util.ArrayList<StatusEffectInstance>();
+        if (mc.player == null) return effects;
+        
+        // Простая реализация для маяков - возвращаем пустой список
+        // В будущем можно добавить детекцию маяков через рефлексию или другие методы
+        return effects;
     }
 }

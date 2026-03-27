@@ -1,5 +1,4 @@
 package me.qwider.sundlc;
-
 import me.qwider.sundlc.module.Module;
 import me.qwider.sundlc.module.ModuleManager;
 import me.qwider.sundlc.render.MSDFRenderer;
@@ -9,7 +8,6 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
-
 public class SunDLC implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
@@ -31,6 +29,9 @@ public class SunDLC implements ClientModInitializer {
             for (Module m : ModuleManager.getModules()) {
                 m.onTick();
             }
+        });
+        net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.LAST.register(context -> {
+            me.qwider.sundlc.render.NameTagsRenderer.render(context.matrixStack(), context.consumers());
         });
     }
 }

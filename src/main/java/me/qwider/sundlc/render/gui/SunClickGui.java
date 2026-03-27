@@ -34,40 +34,31 @@ public class SunClickGui extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Обновляем анимацию
         openAnim.update(!closing);
         float anim = (float) openAnim.getValue();
 
-        // Если закрываемся и анимация на нуле - выходим
         if (closing && anim <= 0.001f) {
             super.close();
             return;
         }
 
-        // --- РЕНДЕР ФОНА (ЗАТЕМНЕНИЕ) ---
-        // Вычисляем альфу от 0 до 150 (примерно 60% прозрачности)
-        int alpha = (int) (150 * anim);
-        // Создаем ARGB цвет: альфа смещается на 24 бита влево
-        int backgroundColor = (alpha << 24) | 0x000000; // Чисто черный с прозрачностью
-
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        // Рисуем на весь экран
-        context.fill(0, 0, width, height, backgroundColor);
-        // --------------------------------
+        // 1. Улучшенный фон: Радиальный градиент (имитация через fillGradient)
+        int alpha = (int) (180 * anim);
+        // Затемняем края сильнее, чем центр
+        context.fillGradient(0, 0, width, height, (alpha << 24) | 0x050505, (alpha << 24) | 0x101010);
 
         if (anim < 0.01) return;
 
-        // Отрисовка панелей с анимацией
+        // 2. Отрисовка панелей с небольшим эффектом появления
         context.getMatrices().push();
 
+        // Панели не просто масштабируются, а немного "подлетают"
+        float scale = 0.9f + (0.1f * anim);
         context.getMatrices().translate(width / 2f, height / 2f, 0);
-        context.getMatrices().scale(anim, anim, 1);
+        context.getMatrices().scale(scale, scale, 1);
         context.getMatrices().translate(-width / 2f, -height / 2f, 0);
 
-        RenderSystem.setShaderColor(1, 1, 1, 1);
         var matrix = context.getMatrices().peek().getPositionMatrix();
-
         for (Panel p : panels) {
             p.render(context, matrix, mouseX, mouseY, anim);
         }
