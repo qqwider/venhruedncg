@@ -65,4 +65,41 @@ public class RenderUtils {
         BufferRenderer.drawWithGlobalProgram(buffer.end());
         shader.getUniform("UseTexture").set(0);
     }
+
+    public static void drawRoundedRectOutline(DrawContext context, float x, float y, float w, float h, float r, float thickness, int color) {
+        // Рисуем 4 линии для обводки
+        float a = ((color >> 24) & 0xFF) / 255f;
+        float red = ((color >> 16) & 0xFF) / 255f;
+        float green = ((color >> 8) & 0xFF) / 255f;
+        float blue = (color & 0xFF) / 255f;
+
+        Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
+        BufferBuilder buffer = Tessellator.getInstance().begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+
+        // Верхняя линия
+        buffer.vertex(matrix, x + r, y, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + r, y + thickness, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + w - r, y + thickness, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + w - r, y, 0).color(red, green, blue, a);
+
+        // Нижняя линия
+        buffer.vertex(matrix, x + r, y + h - thickness, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + r, y + h, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + w - r, y + h, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + w - r, y + h - thickness, 0).color(red, green, blue, a);
+
+        // Левая линия
+        buffer.vertex(matrix, x, y + r, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x, y + h - r, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + thickness, y + h - r, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + thickness, y + r, 0).color(red, green, blue, a);
+
+        // Правая линия
+        buffer.vertex(matrix, x + w - thickness, y + r, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + w - thickness, y + h - r, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + w, y + h - r, 0).color(red, green, blue, a);
+        buffer.vertex(matrix, x + w, y + r, 0).color(red, green, blue, a);
+
+        BufferRenderer.drawWithGlobalProgram(buffer.end());
+    }
 }

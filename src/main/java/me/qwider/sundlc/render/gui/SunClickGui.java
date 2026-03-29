@@ -12,20 +12,28 @@ public class SunClickGui extends Screen {
     private static final List<Panel> panels = new ArrayList<>();
     private final Animation openAnim = new Animation(8.0);
     private boolean closing = false; // Флаг начала закрытия
+    static {
+        float startX = 30;
+        for (me.qwider.sundlc.module.Category c : me.qwider.sundlc.module.Category.values()) {
+            panels.add(new Panel(c, startX, 30));
+            startX += 105;
+        }
+    }
 
     public SunClickGui() {
         super(Text.of("ClickGUI"));
-        if (panels.isEmpty()) {
-            float startX = 30;
-            for (me.qwider.sundlc.module.Category c : me.qwider.sundlc.module.Category.values()) {
-                panels.add(new Panel(c, startX, 30));
-                startX += 105;
-            }
-        }
     }
     @Override
     public void removed() {
-        me.qwider.sundlc.config.ConfigManager.save(); // Сохраняем при закрытии
+        for (Panel p : panels) {
+            // Устанавливаем activeModule в null, чтобы закрыть боковую панель
+            try {
+                java.lang.reflect.Field field = p.getClass().getDeclaredField("activeModule");
+                field.setAccessible(true);
+                field.set(p, null);
+            } catch (Exception ignored) {}
+        }
+        me.qwider.sundlc.config.ConfigManager.save();
         super.removed();
     }
 
@@ -81,5 +89,11 @@ public class SunClickGui extends Screen {
         for (Panel p : panels) p.mouseClicked(mouseX, mouseY, button);
         return super.mouseClicked(mouseX, mouseY, button);
     }
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        for (Panel p : panels) p.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
 
 }

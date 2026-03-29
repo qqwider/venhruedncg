@@ -18,6 +18,7 @@ public class MixinChat {
     private void onRender(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
         TargetHUD.pos.update(mouseX, mouseY);
         Potions.pos.update(mouseX, mouseY);
+        me.qwider.sundlc.module.modules.visuals.Coordinates.pos.update(mouseX, mouseY);
         // Теперь вызываем метод из SunHUD
         SunHUD.renderTargetHUD(context);
     }
@@ -26,5 +27,6 @@ public class MixinChat {
     private void onClick(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
         TargetHUD.pos.onMouseClick((int) mouseX, (int) mouseY, button);
         Potions.pos.onMouseClick((int) mouseX, (int) mouseY, button);
+        me.qwider.sundlc.module.modules.visuals.Coordinates.pos.onMouseClick((int) mouseX, (int) mouseY, button);
     }
 }

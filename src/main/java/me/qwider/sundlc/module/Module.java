@@ -1,11 +1,20 @@
 package me.qwider.sundlc.module;
 
+import me.qwider.sundlc.module.settings.Setting;
 import me.qwider.sundlc.render.Animation;
 import me.qwider.sundlc.render.DynamicIsland;
+import me.qwider.sundlc.render.Animation;
 import net.minecraft.client.MinecraftClient;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public abstract class Module {
     protected static final MinecraftClient mc = MinecraftClient.getInstance();
+    public final List<Setting> settings = new ArrayList<>();
+    public final Animation settingsAnim = new Animation(10.0);
+    public boolean settingsOpen = false;
 
     private final String name;
     private final Category category;
@@ -29,7 +38,12 @@ public abstract class Module {
             this.enabled = enabled;
             if (enabled) onEnable(); else onDisable();
 
-            // Вызываем обновленный остров
+            // Проигрываем звук только если мы уже в игре (не при запуске)
+            if (mc.world != null) {
+                if (enabled) me.qwider.sundlc.util.SoundUtil.playEnable();
+                else me.qwider.sundlc.util.SoundUtil.playDisable();
+            }
+
             if (!this.getName().equalsIgnoreCase("ClickGUI")) {
                 me.qwider.sundlc.render.DynamicIsland.show(this, enabled);
             }
@@ -42,4 +56,7 @@ public abstract class Module {
     public boolean isEnabled() { return enabled; }
     public String getName() { return name; }
     public Category getCategory() { return category; }
+    protected void addSettings(Setting... settings) {
+        this.settings.addAll(Arrays.asList(settings));
+    }
 }

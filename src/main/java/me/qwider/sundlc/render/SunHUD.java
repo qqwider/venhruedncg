@@ -29,6 +29,7 @@ public class SunHUD {
         renderTargetHUD(context);
         DynamicIsland.render(context);
         renderPotions(context);
+        renderCoordinates(context);
     }
 
     // Система анимаций зелий
@@ -161,38 +162,28 @@ public class SunHUD {
         Module m = ModuleManager.getModules().stream().filter(mod -> mod instanceof TargetHUD).findFirst().orElse(null);
         if (m == null || !m.isEnabled()) return;
 
-        // 1. ЗАХВАТ ЦЕЛИ
-        if (mc.crosshairTarget instanceof net.minecraft.util.hit.EntityHitResult ehr) {
-            if (ehr.getEntity() instanceof LivingEntity le && le.isAlive() && le != mc.player) {
-                TargetHUD.target = le;
-            }
-        }
+        // 1. ЗАХВАТ ЦЕЛИ ТЕПЕРЬ ПОЛНОСТЬЮ В TargetHUD.onTick()
+        // Это избавляет от дублирования кода и багов с фильтрами
 
-        // 2. ПРОВЕРКА ВАЛИДНОСТИ (Linger Logic)
-        boolean hasValidTarget = false;
-        if (TargetHUD.target != null) {
-            if (TargetHUD.target.isAlive() && mc.player.squaredDistanceTo(TargetHUD.target) < 400) {
-                hasValidTarget = true;
-            }
-        }
-
+        // 2. ПРОВЕРКА ВАЛИДНОСТИ
         boolean isChat = mc.currentScreen instanceof ChatScreen;
-        // Решаем, нужно ли показывать худ
-        boolean shouldShow = hasValidTarget || isChat;
+
+        // Худ виден если есть цель и таймер не кончился, либо если открыт чат (тест режима)
+        boolean shouldShow = (TargetHUD.target != null && TargetHUD.target.isAlive() && TargetHUD.lingerTicks > 0) || isChat;
 
         m.animation.update(shouldShow);
         float anim = (float) m.animation.getValue();
 
         if (anim <= 0.005f) {
-            if (!shouldShow) TargetHUD.target = null; // Очищаем цель только когда анимация кончилась
+            if (!shouldShow) TargetHUD.target = null;
             return;
         }
 
-        // КТО ОТОБРАЖАЕТСЯ (Исправлено: если цель была, рисуем её до конца анимации)
+        // Выбираем кого рисовать
         LivingEntity entity = (TargetHUD.target != null) ? TargetHUD.target : (isChat ? mc.player : null);
         if (entity == null) return;
 
-        float w = 132, h = 42, x = TargetHUD.pos.x, y = TargetHUD.pos.y;
+        float w = 125, h = 42, x = TargetHUD.pos.x, y = TargetHUD.pos.y;
         TargetHUD.pos.width = w; TargetHUD.pos.height = h;
 
         // Плавное ХП
@@ -253,7 +244,8 @@ public class SunHUD {
         // HP Текст и бар
         String hpStr = String.format("%.1f", entity.getHealth());
         float hpW = MSDFRenderer.getStringWidth(hpStr, 8);
-        MSDFRenderer.drawString(matrix, hpStr, infoX + infoW - hpW - 12, y + 27, 8, (alpha << 24) | 0xFFFFFF);
+        // Отступ от правого края инфо-зоны всего 5 пикселей
+        MSDFRenderer.drawString(matrix, hpStr, infoX + infoW - hpW - 5, y + 27, 8, (alpha << 24) | 0xFFFFFF);
 
         float hpP = Math.max(0.01f, Math.min(1f, targetHudHealth / entity.getMaxHealth()));
         RenderUtils.drawRoundedRect(context, infoX + 4, y + h - 8.5f, barW(infoW), 2.5f, 1f, (alpha/4 << 24) | 0x000000);
@@ -262,7 +254,7 @@ public class SunHUD {
         context.getMatrices().pop();
     }
 
-    private static float barW(float infoW) { return infoW - 8; }
+    private static float barW(float infoW) { return infoW - 10; }
 
     private static java.util.List<StatusEffectInstance> getBeaconEffects() {
         var effects = new java.util.ArrayList<StatusEffectInstance>();
@@ -271,5 +263,74 @@ public class SunHUD {
         // Простая реализация для маяков - возвращаем пустой список
         // В будущем можно добавить детекцию маяков через рефлексию или другие методы
         return effects;
+    }
+    private static void renderCoordinates(DrawContext context) {
+        Module m = ModuleManager.getModules().stream()
+                .filter(mod -> mod instanceof me.qwider.sundlc.module.modules.visuals.Coordinates)
+                .findFirst().orElse(null);
+
+        if (m == null || !m.isEnabled() || mc.player == null) return;
+
+        // 1. ПОЛУЧАЕМ ДАННЫЕ
+        String x = String.format("%.1f", mc.player.getX());
+        String y = String.format("%.1f", mc.player.getY());
+        String z = String.format("%.1f", mc.player.getZ());
+
+        // 2. ГЕОМЕТРИЯ (Расчет размеров слотов)
+        float textSize = 7.5f;
+        float slotPadding = 4;
+        float slotH = 12;
+        float spaceBetween = 3;
+
+        // Считаем ширину каждого слота индивидуально под текст
+        float wX = MSDFRenderer.getStringWidth("X: " + x, textSize) + (slotPadding * 2);
+        float wY = MSDFRenderer.getStringWidth("Y: " + y, textSize) + (slotPadding * 2);
+        float wZ = MSDFRenderer.getStringWidth("Z: " + z, textSize) + (slotPadding * 2);
+
+        // Общая ширина и высота внешней подложки
+        float totalW = wX + wY + wZ + (spaceBetween * 2) + 6;
+        float totalH = 18;
+
+        // Обновляем Draggable для взаимодействия в чате
+        me.qwider.sundlc.module.modules.visuals.Coordinates.pos.width = totalW;
+        me.qwider.sundlc.module.modules.visuals.Coordinates.pos.height = totalH;
+
+        float posX = me.qwider.sundlc.module.modules.visuals.Coordinates.pos.x;
+        float posY = me.qwider.sundlc.module.modules.visuals.Coordinates.pos.y;
+
+        // 3. ЦВЕТА (Твоя палитра)
+        int colorBase = 0xFF1D1B1F;  // Темный корпус
+        int colorInner = 0xFF222126; // Внутренний слот (подложка)
+        int accent = 0xFF8877FF;     // Твой фиолетовый
+
+        // 4. РЕНДЕР КОРПУСА
+        RenderUtils.drawRoundedRect(context, posX, posY, totalW, totalH, 6, colorBase);
+
+        Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
+        float currentX = posX + 3; // Начальный отступ слева
+        float slotY = posY + (totalH - slotH) / 2f; // Центровка слотов по вертикали
+
+        // ОТРИСОВКА СЛОТОВ (X, Y, Z)
+
+        // Слот X
+        RenderUtils.drawRoundedRect(context, currentX, slotY, wX, slotH, 4, colorInner);
+        drawCoordText(matrix, "X", x, currentX + slotPadding, slotY + 8.5f, textSize, accent);
+        currentX += wX + spaceBetween;
+
+        // Слот Y
+        RenderUtils.drawRoundedRect(context, currentX, slotY, wY, slotH, 4, colorInner);
+        drawCoordText(matrix, "Y", y, currentX + slotPadding, slotY + 8.5f, textSize, accent);
+        currentX += wY + spaceBetween;
+
+        // Слот Z
+        RenderUtils.drawRoundedRect(context, currentX, slotY, wZ, slotH, 4, colorInner);
+        drawCoordText(matrix, "Z", z, currentX + slotPadding, slotY + 8.5f, textSize, accent);
+    }
+
+    // Вспомогательный метод для красивого разделения цветов (Префикс: Значение)
+    private static void drawCoordText(Matrix4f matrix, String label, String value, float x, float y, float size, int accent) {
+        MSDFRenderer.drawString(matrix, label + ":", x, y, size, accent);
+        float offset = MSDFRenderer.getStringWidth(label + ": ", size);
+        MSDFRenderer.drawString(matrix, value, x + offset, y, size, 0xFFFFFFFF);
     }
 }

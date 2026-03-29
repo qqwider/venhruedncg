@@ -7,9 +7,18 @@
     "InGameHudMixin",
     "MixinChat",
     "MixinLivingEntity",
-    "EntityRendererMixin"
+    "EntityRendererMixin",
+    "MixinGameRenderer",
+    "BossBarHudAccessor",
+    "PlayerListHudAccessor",
+    "MixinClientWorld",
+    "MixinBackgroundRenderer",
+    "MixinWorldRenderer",
+    "MixinInGameOverlayRenderer"
   ],
   "client": [
+    "TitleScreenMixin",
+    "ScreenAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
