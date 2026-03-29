@@ -1,0 +1,18 @@
+{
+  "module_enable": {
+    "category": "master",
+    "sounds": [ "sundlc:module_enable" ]
+  },
+  "module_disable": {
+    "category": "master",
+    "sounds": [ "sundlc:module_disable" ]
+  },
+  "ui_click": {
+    "category": "master",
+    "sounds": [ "sundlc:ui_click" ]
+  },
+  "mainmenu": {
+    "category": "master",
+    "sounds": [ "sundlc:mainmenu" ]
+  }
+}
